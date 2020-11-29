@@ -1,0 +1,252 @@
+#!/usr/bin/env python3
+
+#
+# (c) 2020 Gerrit Beine <mail@gerritbeine.com>
+#
+
+import re
+import json
+import jsonref
+import jinja2
+import monthdelta
+
+from datetime import date, datetime
+from os.path import abspath
+from openpyxl import load_workbook
+from jsonschema import validate
+from docxtpl import DocxTemplate
+
+resume_file = "resume.xlsx"
+
+template_file = {
+    'de': "resume-de.docx",
+    'en': "resume-en.docx"
+}
+
+def main():
+    parser = {
+        'basics': parse_basics,
+        'basics_location': parse_basics_location,
+        'basics_profiles': parse_basics_profiles,
+        'work': parse_work,
+        'projects': parse_projects,
+        'volunteer': parse_dummy,
+        'education': parse_education,
+        'awards': parse_dummy,
+        'publications': parse_dummy,
+        'skills': parse_dummy,
+        'languages': parse_languages,
+        'interests': parse_dummy,
+        'references': parse_dummy
+    }
+
+    wb = load_workbook(filename = resume_file)
+    jo = { "en": {}, "de": {} }
+
+    for sheet_name in wb.sheetnames:
+        parser[sheet_name](wb[sheet_name], jo)
+
+    generate(jo['de'], template_file['de'], "generated_Kompetenzprofil {} DE.docx".format(jo['de']['basics']['name']))
+    generate(jo['en'], template_file['en'], "generated_Competence Profile {} EN.docx".format(jo['en']['basics']['name']))
+
+
+def parse_basics(ws, jo):
+    jo['en']["basics"] = {}
+    jo['de']["basics"] = {}
+    for row in ws.iter_rows():
+        if "basics" == row[0].value:
+            property = row[1].value
+            value = { 'en': row[2].value, 'de': row[3].value }
+            if not value['en'] is None:
+                jo['en']["basics"][property] = value['en']
+                jo['de']["basics"][property] = value['de']
+
+
+def parse_basics_location(ws, jo):
+    jo['en']["basics"]["location"] = {}
+    jo['de']["basics"]["location"] = {}
+    for row in ws.iter_rows():
+        if "basics_location" == row[0].value:
+            property = row[1].value
+            value = { 'en': row[2].value, 'de': row[3].value }
+            if not value['en'] is None:
+                jo['en']["basics"]["location"][property] = value['en']
+                jo['de']["basics"]["location"][property] = value['de']
+
+
+def parse_basics_profiles(ws, jo):
+    jo['en']["basics"]["profiles"] = []
+    jo['de']["basics"]["profiles"] = []
+    profile = { 'en': {}, 'de': {} }
+    count = 0
+    for row in ws.iter_rows():
+        if "basics_profiles" == row[0].value and count < 3:
+            property = row[1].value
+            value = { 'en': row[2].value, 'de': row[3].value }
+            if not value is None:
+                profile['en'][property] = value['en']
+                profile['de'][property] = value['de']
+            count += 1
+        if count == 3:
+            jo['en']["basics"]["profiles"].append(profile['en'])
+            jo['de']["basics"]["profiles"].append(profile['de'])
+            count = 0
+            profile = { 'en': {}, 'de': {} }
+
+
+def parse_work(ws, jo):
+    jo['en']["work"] = []
+    jo['de']["work"] = []
+    work = { 'en': {}, 'de': {} }
+    count = 0
+    skip = False
+    for row in ws.iter_rows():
+        if "work" == row[0].value and count < 7:
+            property = row[1].value
+            value = { 'en': row[2].value, 'de': row[3].value }
+            skip = skip or row[4].value
+            if isinstance(value['en'], datetime):
+                work['en'][property] = value['en'].date().isoformat()
+                work['de'][property] = value['de'].date().isoformat()
+            elif not value['en'] is None:
+                work['en'][property] = value['en']
+                work['de'][property] = value['de']
+            count += 1
+        if count == 7:
+            if not skip:
+                jo['en']["work"].append(work['en'])
+                jo['de']["work"].append(work['de'])
+            count = 0
+            work = { 'en': {}, 'de': {} }
+            skip = False
+
+
+def parse_projects(ws, jo):
+    jo['en']["projects"] = []
+    jo['de']["projects"] = []
+    project = { 'en': {}, 'de': {} }
+    count = 0
+    skip = False
+    for row in ws.iter_rows():
+        if "project" == row[0].value and count < 17:
+            property = row[1].value
+            value = { 'en': row[2].value, 'de': row[3].value }
+            skip = skip or row[4].value
+            if isinstance(value['en'], datetime):
+                project['en'][property] = value['en'].date().isoformat()
+                project['de'][property] = value['de'].date().isoformat()
+            elif not value['en'] is None and property in {'roles', 'keywords', 'highlights', 'stakeholder'}:
+                project['en'][property] = value['en'].split(",")
+                project['de'][property] = value['de'].split(",")
+            elif not value['en'] is None:
+                project['en'][property] = value['en']
+                project['de'][property] = value['de']
+            count += 1
+        if count == 17:
+            if not skip:
+                jo['en']["projects"].append(project['en'])
+                jo['de']["projects"].append(project['de'])
+            count = 0
+            project = { 'en': {}, 'de': {} }
+            skip = False
+
+
+def parse_education(ws, jo):
+    jo['en']["education"] = []
+    jo['de']["education"] = []
+    education = { 'en': {}, 'de': {} }
+    count = 0
+    skip = False
+    for row in ws.iter_rows():
+        if "education" == row[0].value and count < 7:
+            property = row[1].value
+            value = { 'en': row[2].value, 'de': row[3].value }
+            skip = skip or row[4].value
+            if isinstance(value['en'], datetime):
+                education['en'][property] = value['en'].date().isoformat()
+                education['de'][property] = value['de'].date().isoformat()
+            elif not value['en'] is None:
+                education['en'][property] = value['en']
+                education['de'][property] = value['de']
+            count += 1
+        if count == 7:
+            if not skip:
+                jo['en']["education"].append(education['en'])
+                jo['de']["education"].append(education['de'])
+            count = 0
+            education = { 'en': {}, 'de': {} }
+            skip = False
+
+
+def parse_languages(ws, jo):
+    jo['en']["languages"] = []
+    jo['de']["languages"] = []
+    language = { 'en': {}, 'de': {} }
+    count = 0
+    for row in ws.iter_rows():
+        if "languages" == row[0].value and count < 2:
+            property = row[1].value
+            value = { 'en': row[2].value, 'de': row[3].value }
+            if not value['en'] is None:
+                language['en'][property] = value['en']
+                language['de'][property] = value['de']
+            count += 1
+        if count == 2:
+            jo['en']["languages"].append(language['en'])
+            jo['de']["languages"].append(language['de'])
+            count = 0
+            language = { 'en': {}, 'de': {} }
+
+
+def parse_dummy(ws, jo):
+    print("Not yet implemented")
+
+
+def load_schema():
+    schema_name = 'resume.extended.json'
+    base_path = abspath(schema_name)
+    base_uri = 'file:///{}'.format(base_path)
+    with open(schema_name) as json_file:
+        resume_schema = jsonref.loads(json_file.read(), base_uri=base_uri, jsonschema=True)
+    return resume_schema
+
+
+def generate(jo, template_file, output_file):
+    resume_schema = load_schema()
+    validate(instance=jo, schema=resume_schema)
+
+    doc = DocxTemplate(template_file)
+
+    context = { 
+        'name' : jo['basics']['name'],
+        'education': jo['education']
+        }
+
+    jinja_env = jinja2.Environment()
+    jinja_env.filters['year'] = year
+    jinja_env.filters['duration'] = duration
+
+    doc.render(jo, jinja_env)
+    doc.save(output_file)
+
+
+def year(value):
+    pattern = re.compile("^([0-9]{4}-[0-9]{2}-[0-9]{2})$")
+    if pattern.match(value):
+        value = datetime.strptime(value, "%Y-%m-%d").date().year
+    return value
+
+
+def duration(value):
+    if 'startDate' not in value or 'endDate' not in value:
+        return None
+    pattern = re.compile("^([0-9]{4}-[0-9]{2}-[0-9]{2})$")
+    if pattern.match(value['startDate']) and pattern.match(value['endDate']):
+        startDate = datetime.strptime(value['startDate'], "%Y-%m-%d").date()
+        endDate = datetime.strptime(value['endDate'], "%Y-%m-%d").date()
+        delta = monthdelta.monthmod(startDate, endDate)
+        value = delta[0].months
+    return value
+
+
+main()

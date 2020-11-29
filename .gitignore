@@ -1,0 +1,8 @@
+__pycache__
+bin
+include
+lib
+pip-selfcheck.json
+pyvenv.cfg
+generated_*
+resume.xslx
